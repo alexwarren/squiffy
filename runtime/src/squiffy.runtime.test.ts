@@ -1,8 +1,16 @@
-import { expect, test, beforeEach, afterEach, vi } from "vitest";
+import { expect, test, beforeEach, afterEach, beforeAll, vi } from "vitest";
 import fs from "fs/promises";
 import globalJsdom from "global-jsdom";
 import { init } from "./squiffy.runtime.js";
-import { compile as squiffyCompile } from "squiffy-compiler"; 
+import { compile as squiffyCompile } from "squiffy-compiler";
+
+// Mock crypto.randomUUID() to return a stable value for tests
+beforeAll(() => {
+    const mockUUID = "00000000-0000-0000-0000-000000000000";
+    vi.stubGlobal("crypto", {
+        randomUUID: () => mockUUID
+    });
+});
 
 const html = `
 <!DOCTYPE html>
@@ -83,6 +91,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    localStorage.clear();
     cleanup();
 });
 
@@ -587,6 +596,200 @@ This is the new start section`;
     expect(output).toBe("This is the new start section");
 });
 
+test("Update @set directive in section re-renders text", async () => {
+    const script = `@set score = 75
+
+Your score is {{score}}.`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is 75.");
+
+    const script2 = `@set score = 100
+
+Your score is {{score}}.`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is 100.");
+});
+
+test("Update @set directive in passage re-renders text", async () => {
+    const script = `Click [here]
+
+[here]:
+@set score = 75
+Your score is {{score}}.`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const link = findLink(element, "passage", "here");
+    await squiffyApi.clickLink(link);
+
+    let output = getPassageContent(element, "_default", "here");
+    expect(output).toBe("Your score is 75.");
+
+    const script2 = `Click [here]
+
+[here]:
+@set score = 100
+Your score is {{score}}.`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getPassageContent(element, "_default", "here");
+    expect(output).toBe("Your score is 100.");
+});
+
+test("Adding @set directive updates text", async () => {
+    const script = "Your score is {{score}}.";
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is .");
+
+    const script2 = `@set score = 50
+
+Your score is {{score}}.`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is 50.");
+});
+
+test("Removing @set directive updates text", async () => {
+    const script = `@set score = 75
+
+Your score is {{score}}.`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is 75.");
+
+    // Note: Removing the @set doesn't unset the variable, but the text should still re-render
+    // with whatever the current state is (still 75 in this case since we didn't unset it)
+    const script2 = "Your score is {{score}}.";
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("Your score is 75.");
+});
+
+test("Update multiple @set directives", async () => {
+    const script = `@set name = Alice
+@set score = 100
+
+Hello {{name}}, your score is {{score}}.`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("Hello Alice, your score is 100.");
+
+    const script2 = `@set name = Bob
+@set score = 200
+
+Hello {{name}}, your score is {{score}}.`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("Hello Bob, your score is 200.");
+});
+
+test("Update boolean @set directive from true to false", async () => {
+    const script = `@set has_key = true
+
+{{#if has_key}}
+You have the key.
+{{else}}
+You don't have the key.
+{{/if}}`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("You have the key.");
+
+    const script2 = `@set has_key = false
+
+{{#if has_key}}
+You have the key.
+{{else}}
+You don't have the key.
+{{/if}}`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("You don't have the key.");
+});
+
+test("Update boolean @set directive from false to true", async () => {
+    const script = `@set has_key = false
+
+{{#if has_key}}
+You have the key.
+{{else}}
+You don't have the key.
+{{/if}}`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("You don't have the key.");
+
+    const script2 = `@set has_key = true
+
+{{#if has_key}}
+You have the key.
+{{else}}
+You don't have the key.
+{{/if}}`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("You have the key.");
+});
+
+test("Boolean values work correctly with logic helpers", async () => {
+    const script = `@set has_key = true
+@set door_locked = true
+
+{{#if (and has_key door_locked)}}
+You unlock the door.
+{{else}}
+Cannot unlock.
+{{/if}}`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let output = getSectionContent(element, "_default");
+    expect(output).toBe("You unlock the door.");
+
+    // Change has_key to false
+    const script2 = `@set has_key = false
+@set door_locked = true
+
+{{#if (and has_key door_locked)}}
+You unlock the door.
+{{else}}
+Cannot unlock.
+{{/if}}`;
+    const update2 = await compile(script2);
+    squiffyApi.update(update2.story);
+
+    output = getSectionContent(element, "_default");
+    expect(output).toBe("Cannot unlock.");
+});
+
 test("Going back handling @clear and attribute changes", async () => {
     const script = `
 Choose: [a], [b]
@@ -689,11 +892,12 @@ Score: {score}, Name: {name}
     const element = document.getElementById("squiffy")!;
     const compileResult = await compile(script, "test-story-123.squiffy");
 
-    // Initialize with persistence enabled
+    // Initialize with persistence enabled (using GUID like file:// protocol games would)
     const squiffyApi = await init({
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "00000000-0000-0000-0000-000000000000",
     });
 
     await squiffyApi.begin();
@@ -702,9 +906,9 @@ Score: {score}, Name: {name}
     expect(squiffyApi.get("score")).toBe(100);
     expect(squiffyApi.get("name")).toBe("Player");
 
-    // Verify localStorage contains the values with correct prefixes
-    expect(localStorage["test-story-123.squiffy-score"]).toBe("100");
-    expect(localStorage["test-story-123.squiffy-name"]).toBe('"Player"');
+    // Verify localStorage contains the values with correct prefixes (using the GUID from story.id)
+    expect(localStorage["00000000-0000-0000-0000-000000000000-score"]).toBe("100");
+    expect(localStorage["00000000-0000-0000-0000-000000000000-name"]).toBe('"Player"');
 
     // Clean up localStorage
     localStorage.clear();
@@ -716,19 +920,20 @@ test("State persistence: load state from localStorage", async () => {
 Score: {score}, Name: {name}
 `;
 
-    // Pre-populate localStorage with state
-    localStorage["persist-load-test.squiffy-score"] = "250";
-    localStorage["persist-load-test.squiffy-name"] = '"SavedPlayer"';
-    localStorage["persist-load-test.squiffy-level"] = "5";
+    // Pre-populate localStorage with state (using the mocked GUID)
+    localStorage["00000000-0000-0000-0000-000000000000-score"] = "250";
+    localStorage["00000000-0000-0000-0000-000000000000-name"] = '"SavedPlayer"';
+    localStorage["00000000-0000-0000-0000-000000000000-level"] = "5";
 
     const element = document.getElementById("squiffy")!;
     const compileResult = await compile(script, "persist-load-test.squiffy");
 
-    // Initialize with persistence enabled - should load from localStorage
+    // Initialize with persistence enabled - should load from localStorage (using GUID like file:// protocol games would)
     const squiffyApi = await init({
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "00000000-0000-0000-0000-000000000000",
     });
 
     await squiffyApi.begin();
@@ -756,19 +961,20 @@ Content here.
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "00000000-0000-0000-0000-000000000000",
     });
 
     await squiffyApi.begin();
 
-    // Verify state is set in localStorage
-    expect(localStorage["reset-test.squiffy-data"]).toBe('"important"');
+    // Verify state is set in localStorage (using the GUID)
+    expect(localStorage["00000000-0000-0000-0000-000000000000-data"]).toBe('"important"');
     expect(squiffyApi.get("data")).toBe("important");
 
     // Restart the story
     squiffyApi.restart();
 
     // Verify localStorage is cleared
-    expect(localStorage["reset-test.squiffy-data"]).toBeUndefined();
+    expect(localStorage["00000000-0000-0000-0000-000000000000-data"]).toBeUndefined();
     expect(squiffyApi.get("data")).toBe(null);
 
     // Clean up localStorage
@@ -817,6 +1023,7 @@ Content here.
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "00000000-0000-0000-0000-000000000000",
     });
 
     await squiffyApi.begin();
@@ -832,9 +1039,9 @@ Content here.
     const player = squiffyApi.get("player");
     expect(player).toEqual({ health: 100, mana: 50 });
 
-    // Verify localStorage contains serialized JSON
-    expect(JSON.parse(localStorage["complex-persist.squiffy-inventory"])).toEqual(["sword", "shield", "potion"]);
-    expect(JSON.parse(localStorage["complex-persist.squiffy-player"])).toEqual({ health: 100, mana: 50 });
+    // Verify localStorage contains serialized JSON (using the GUID from story.id)
+    expect(JSON.parse(localStorage["00000000-0000-0000-0000-000000000000-inventory"])).toEqual(["sword", "shield", "potion"]);
+    expect(JSON.parse(localStorage["00000000-0000-0000-0000-000000000000-player"])).toEqual({ health: 100, mana: 50 });
 
     // Clean up localStorage
     localStorage.clear();
@@ -859,6 +1066,7 @@ Section 2 content.
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "00000000-0000-0000-0000-000000000000",
     });
 
     await squiffyApi.begin();
@@ -871,9 +1079,9 @@ Section 2 content.
     const seenSections = squiffyApi.get("_seen_sections");
     expect(seenSections).toContain("section1");
 
-    // Verify it's saved to localStorage
-    expect(localStorage["seen-persist.squiffy-_seen_sections"]).toBeDefined();
-    const storedSeen = JSON.parse(localStorage["seen-persist.squiffy-_seen_sections"]);
+    // Verify it's saved to localStorage (using the GUID)
+    expect(localStorage["00000000-0000-0000-0000-000000000000-_seen_sections"]).toBeDefined();
+    const storedSeen = JSON.parse(localStorage["00000000-0000-0000-0000-000000000000-_seen_sections"]);
     expect(storedSeen).toContain("section1");
 
     // Clean up localStorage
@@ -899,6 +1107,7 @@ Content.
         element: element,
         story: compileResultA.story,
         persist: true,
+        storyId: "story-A.squiffy",
     });
 
     await api1.begin();
@@ -914,6 +1123,7 @@ Content.
         element: element,
         story: compileResultB.story,
         persist: true,
+        storyId: "story-B.squiffy",
     });
 
     await api2.begin();
@@ -944,6 +1154,7 @@ test("State persistence: restart only clears current storyId", async () => {
         element: element,
         story: compileResult.story,
         persist: true,
+        storyId: "story1.squiffy",
     });
 
     await squiffyApi.begin();
@@ -1342,4 +1553,459 @@ Start: {{x}}. {{inc "x"}}After first inc: {{x}}. {{inc "x" 10}}After second inc:
     expect(squiffyApi.get("x")).toBe(11);
     const content = getSectionContent(element, "start");
     expect(content).toBe("Start: 0. After first inc: 1. After second inc: 11.");
+});
+
+test("{{at}} helper returns true when at specified section", async () => {
+    const script = `
+[[start]]:
+{{#if (at "start")}}Currently at start.{{else}}Not at start.{{/if}}
+Go to [[next]].
+
+[[next]]:
+{{#if (at "start")}}At start.{{else}}Not at start anymore.{{/if}}
+{{#if (at "next")}}Now at next.{{/if}}
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let content = getSectionContent(element, "start");
+    expect(content).toContain("Currently at start.");
+
+    const nextLink = findLink(element, "section", "next");
+    await squiffyApi.clickLink(nextLink);
+
+    content = getSectionContent(element, "next");
+    expect(content).toContain("Not at start anymore.");
+    expect(content).toContain("Now at next.");
+});
+
+test("{{at}} helper with array returns true when at any of specified sections", async () => {
+    const script = `
+[[start]]:
+{{#if (at (array "start" "other"))}}At start or other.{{else}}Elsewhere.{{/if}}
+Go to [[next]].
+
+[[next]]:
+{{#if (at (array "start" "other"))}}At start or other.{{else}}Not at start or other.{{/if}}
+{{#if (at (array "next" "another"))}}At next or another.{{/if}}
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    let content = getSectionContent(element, "start");
+    expect(content).toContain("At start or other.");
+
+    const nextLink = findLink(element, "section", "next");
+    await squiffyApi.clickLink(nextLink);
+
+    content = getSectionContent(element, "next");
+    expect(content).toContain("Not at start or other.");
+    expect(content).toContain("At next or another.");
+});
+
+test("Input validation: links are disabled when required input is empty", async () => {
+    const script = `
+Enter your name: <input type="text" data-attribute="player_name" required>
+
+[[Continue]]
+
+[[Continue]]:
+Hello, {{player_name}}!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    // Find the section link
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Initially link should be disabled because required input is empty
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+    expect(continueLink.getAttribute("aria-disabled")).toBe("true");
+
+    // Try to click - should not navigate
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(1);
+});
+
+test("Input validation: links are enabled when required input is filled", async () => {
+    const script = `
+Enter your name: <input type="text" data-attribute="player_name" required>
+
+[[Continue]]
+
+[[Continue]]:
+Hello, {{player_name}}!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    // Find the input and link
+    const input = element.querySelector('input[data-attribute="player_name"]') as HTMLInputElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Fill the input
+    input.value = "Alice";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Link should now be enabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+    expect(continueLink.hasAttribute("aria-disabled")).toBe(false);
+
+    // Click should work
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(2);
+    expect(getSectionContent(element, "Continue")).toContain("Hello, Alice!");
+});
+
+test("Input validation: clearing input re-disables links", async () => {
+    const script = `
+Enter your name: <input type="text" data-attribute="player_name" required>
+
+[[Continue]]
+
+[[Continue]]:
+Hello, {{player_name}}!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const input = element.querySelector('input[data-attribute="player_name"]') as HTMLInputElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Fill the input
+    input.value = "Test";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Link should be enabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+
+    // Clear the input
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Link should be disabled again
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Try to click - should not navigate
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(1);
+});
+
+test("Input validation: passage links are also validated", async () => {
+    const script = `
+Enter your name: <input type="text" data-attribute="player_name" required>
+
+You can [look around] or [check inventory].
+
+[look around]:
+You see a room.
+
+[check inventory]:
+Your pockets are empty.
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const input = element.querySelector('input[data-attribute="player_name"]') as HTMLInputElement;
+
+    // Find passage links
+    const lookLink = findLink(element, "passage", "look around");
+    const inventoryLink = findLink(element, "passage", "check inventory");
+
+    // Initially both should be disabled
+    expect(lookLink.classList.contains("validation-disabled")).toBe(true);
+    expect(inventoryLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Try to click - should not work
+    await squiffyApi.clickLink(lookLink);
+    expect(element.querySelectorAll(".squiffy-output-passage").length).toBe(0);
+
+    // Fill the input
+    input.value = "Bob";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Links should now be enabled
+    expect(lookLink.classList.contains("validation-disabled")).toBe(false);
+    expect(inventoryLink.classList.contains("validation-disabled")).toBe(false);
+
+    // Click should work
+    await squiffyApi.clickLink(lookLink);
+    expect(element.querySelectorAll(".squiffy-output-passage").length).toBe(1);
+});
+
+test("Input validation: multiple inputs all must be valid", async () => {
+    const script = `
+Name: <input type="text" data-attribute="name" required>
+Age: <input type="number" data-attribute="age" required min="1" max="120">
+
+[[Continue]]
+
+[[Continue]]:
+Name: {{name}}, Age: {{age}}
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const nameInput = element.querySelector('input[data-attribute="name"]') as HTMLInputElement;
+    const ageInput = element.querySelector('input[data-attribute="age"]') as HTMLInputElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Initially disabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill only name
+    nameInput.value = "Charlie";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Still disabled because age is empty
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill age with invalid value
+    ageInput.value = "150";
+    ageInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Still disabled because age is out of range
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill age with valid value
+    ageInput.value = "25";
+    ageInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Now should be enabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+
+    // Click should work
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(2);
+});
+
+test("Input validation: validation resets when moving to new section", async () => {
+    const script = `
+Name: <input type="text" data-attribute="name" required>
+
+[[Continue]]
+
+[[Continue]]:
+Email: <input type="email" data-attribute="email" required>
+
+[[Finish]]
+
+[[Finish]]:
+Done!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    // Fill first input and navigate
+    const nameInput = element.querySelector('input[data-attribute="name"]') as HTMLInputElement;
+    nameInput.value = "Dave";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    const continueLink = findLink(element, "section", "Continue", true);
+    await squiffyApi.clickLink(continueLink);
+
+    // In second section, new input should block navigation
+    const finishLink = findLink(element, "section", "Finish", true);
+    expect(finishLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill email and continue
+    const emailInput = element.querySelector('input[data-attribute="email"]') as HTMLInputElement;
+    emailInput.value = "dave@example.com";
+    emailInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(finishLink.classList.contains("validation-disabled")).toBe(false);
+
+    await squiffyApi.clickLink(finishLink);
+    expect(getSectionContent(element, "Finish")).toContain("Done!");
+});
+
+test("Input validation: disabled inputs are ignored", async () => {
+    const script = `
+Active: <input type="text" data-attribute="active" required>
+Disabled: <input type="text" data-attribute="disabled" required disabled>
+
+[[Continue]]
+
+[[Continue]]:
+Done!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const activeInput = element.querySelector('input[data-attribute="active"]') as HTMLInputElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Fill only the active input (disabled one should be ignored)
+    activeInput.value = "test";
+    activeInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Link should be enabled (disabled input doesn't count)
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(2);
+});
+
+test("Input validation: select element with required attribute", async () => {
+    const script = `
+Choose difficulty: <select data-attribute="difficulty" required>
+    <option value="">-- Select --</option>
+    <option value="easy">Easy</option>
+    <option value="normal">Normal</option>
+    <option value="hard">Hard</option>
+</select>
+
+[[Start]]
+
+[[Start]]:
+You selected {{difficulty}} mode.
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const select = element.querySelector('select[data-attribute="difficulty"]') as HTMLSelectElement;
+    const startLink = findLink(element, "section", "Start", true);
+
+    // Initially link should be disabled because no option is selected
+    expect(startLink.classList.contains("validation-disabled")).toBe(true);
+    expect(startLink.getAttribute("aria-disabled")).toBe("true");
+
+    // Try to click - should not navigate
+    await squiffyApi.clickLink(startLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(1);
+
+    // Select an option
+    select.value = "normal";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Link should now be enabled
+    expect(startLink.classList.contains("validation-disabled")).toBe(false);
+    expect(startLink.hasAttribute("aria-disabled")).toBe(false);
+
+    // Click should work
+    await squiffyApi.clickLink(startLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(2);
+    expect(getSectionContent(element, "Start")).toContain("You selected normal mode.");
+});
+
+test("Input validation: select element value is stored in attribute", async () => {
+    const script = `
+Choose difficulty: <select data-attribute="difficulty" required>
+    <option value="">-- Select --</option>
+    <option value="easy">Easy</option>
+    <option value="normal">Normal</option>
+    <option value="hard">Hard</option>
+</select>
+
+[[Start]]
+
+[[Start]]:
+Difficulty: {{difficulty}}
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const select = element.querySelector('select[data-attribute="difficulty"]') as HTMLSelectElement;
+    const startLink = findLink(element, "section", "Start", true);
+
+    // Select an option
+    select.value = "hard";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Navigate
+    await squiffyApi.clickLink(startLink);
+
+    // Check that the value was stored correctly
+    expect(squiffyApi.get("difficulty")).toBe("hard");
+    expect(getSectionContent(element, "Start")).toContain("Difficulty: hard");
+});
+
+test("Input validation: changing select back to empty re-disables links", async () => {
+    const script = `
+Choose: <select data-attribute="choice" required>
+    <option value="">-- Select --</option>
+    <option value="a">Option A</option>
+    <option value="b">Option B</option>
+</select>
+
+[[Continue]]
+
+[[Continue]]:
+Done!
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const select = element.querySelector('select[data-attribute="choice"]') as HTMLSelectElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Select an option
+    select.value = "a";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Link should be enabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+
+    // Change back to empty
+    select.value = "";
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+
+    // Link should be disabled again
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Try to click - should not navigate
+    await squiffyApi.clickLink(continueLink);
+    expect(element.querySelectorAll(".squiffy-output-section").length).toBe(1);
+});
+
+test("Input validation: select combined with other inputs", async () => {
+    const script = `
+Name: <input type="text" data-attribute="name" required>
+Level: <select data-attribute="level" required>
+    <option value="">-- Select --</option>
+    <option value="1">Level 1</option>
+    <option value="2">Level 2</option>
+</select>
+
+[[Continue]]
+
+[[Continue]]:
+{{name}} at level {{level}}
+`;
+
+    const { squiffyApi, element } = await initScript(script);
+
+    const nameInput = element.querySelector('input[data-attribute="name"]') as HTMLInputElement;
+    const levelSelect = element.querySelector('select[data-attribute="level"]') as HTMLSelectElement;
+    const continueLink = findLink(element, "section", "Continue", true);
+
+    // Initially disabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill only name
+    nameInput.value = "Player";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Still disabled because select is empty
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Select level but clear name
+    levelSelect.value = "1";
+    levelSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    nameInput.value = "";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Still disabled because name is empty
+    expect(continueLink.classList.contains("validation-disabled")).toBe(true);
+
+    // Fill both
+    nameInput.value = "Hero";
+    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    // Now should be enabled
+    expect(continueLink.classList.contains("validation-disabled")).toBe(false);
+
+    // Click should work
+    await squiffyApi.clickLink(continueLink);
+    expect(getSectionContent(element, "Continue")).toContain("Hero at level 1");
 });

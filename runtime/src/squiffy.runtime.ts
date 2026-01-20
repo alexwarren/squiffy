@@ -8,6 +8,7 @@ import { Plugins } from "./plugins/index.js";
 import { LinkHandler } from "./linkHandler.js";
 import { Animation } from "./animation.js";
 import { imports } from "./import.js";
+import { areInputsValid, setupInputValidation } from "./inputValidation.js";
 
 export type { SquiffyApi } from "./types.js";
 
@@ -21,13 +22,18 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
     const emitter = new Emitter<SquiffyEventMap>();
     const transitions: (() => Promise<void>)[] = [];
     let runningTransitions = false;
-    
+
     async function handleLink(link: HTMLElement): Promise<boolean> {
         if (runningTransitions) return false;
         const outputSection = link.closest(".squiffy-output-section");
         if (outputSection !== currentSectionElement) return false;
 
         if (link.classList.contains("disabled")) return false;
+
+        // Check if all inputs in the current section are valid before allowing navigation
+        if (!areInputsValid(currentSectionElement)) {
+            return false;
+        }
 
         const passage = link.getAttribute("data-passage");
         const section = link.getAttribute("data-section");
@@ -112,8 +118,14 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
         const setMatch = setRegex.exec(expr);
         if (setMatch) {
             const lhs = setMatch[1];
-            let rhs = setMatch[2];
-            if (isNaN(rhs as any)) {
+            let rhs: any = setMatch[2];
+            if (rhs === "true") {
+                set(lhs, true);
+            }
+            else if (rhs === "false") {
+                set(lhs, false);
+            }
+            else if (isNaN(rhs as any)) {
                 if (rhs.startsWith("@")) rhs = get(rhs.substring(1));
                 set(lhs, rhs);
             }
@@ -286,6 +298,9 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
             await fn();
         }
 
+        // Setup validation for any inputs added by passages
+        setupInputValidation(currentSectionElement);
+
         writeUndoLog();
         save();
         const newCanGoBack = canGoBack();
@@ -343,6 +358,7 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
         currentSection = story.sections[get("_section")];
         runUiJs();
         pluginManager.onLoad();
+        setupInputValidation(currentSectionElement);
         return true;
     }
 
@@ -367,6 +383,12 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
             });
     
             currentSectionElement.querySelectorAll("textarea").forEach(el => {
+                const attribute = el.getAttribute("data-attribute") || el.id;
+                if (attribute) set(attribute, el.value);
+                el.disabled = true;
+            });
+
+            currentSectionElement.querySelectorAll("select").forEach(el => {
                 const attribute = el.getAttribute("data-attribute") || el.id;
                 if (attribute) set(attribute, el.value);
                 el.disabled = true;
@@ -458,6 +480,10 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
             div.innerHTML = html;
             pluginManager.onWrite(div);
             currentBlockOutputElement.appendChild(div);
+
+            // Setup validation for any new inputs that were just added
+            setupInputValidation(currentSectionElement);
+
             ui.scrollToEnd();
         },
         clearScreen: () => {
@@ -495,7 +521,7 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
             return;
         }
 
-        updateStory(story, newStory, outputElement, ui, disableLink);
+        updateStory(story, newStory, outputElement, ui, disableLink, (attrs) => processAttributes(attrs));
 
         story = newStory;
 
@@ -614,9 +640,25 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
         onSet: options.onSet || (() => {})
     };
 
-    if (options.persist === true && !story.id) {
-        console.warn("Persist is set to true in Squiffy runtime options, but no story id has been set. Persist will be disabled.");
-        settings.persist = false;
+    // Determine the storage key to use for localStorage
+    let storageKey = "";
+    if (settings.persist) {
+        if (options.storyId !== undefined) {
+            // Use explicit storyId if provided
+            storageKey = options.storyId;
+        } else if (window.location.protocol === "file:") {
+            // For games opened from file system, use story.id (a GUID generated at compile time)
+            // This prevents issues with file:// localStorage sharing in Chrome
+            storageKey = story.id || "";
+        } else {
+            // For games served via HTTP(S), use the URL path
+            storageKey = window.location.pathname;
+        }
+
+        if (!storageKey) {
+            console.warn("Persist is set to true in Squiffy runtime options, but no storage key could be determined. Persist will be disabled.");
+            settings.persist = false;
+        }
     }
 
     if (settings.scroll === "element") {
@@ -651,7 +693,7 @@ export const init = async (options: SquiffyInitOptions): Promise<SquiffyApi> => 
         }
     };
 
-    const state = new State(settings.persist, story.id || "", settings.onSet, emitter, onSet);
+    const state = new State(settings.persist, storageKey, settings.onSet, emitter, onSet);
     const get = state.get.bind(state);
     const set = state.set.bind(state);
 

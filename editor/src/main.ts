@@ -6,7 +6,7 @@ import "./jquery-globals";
 import "chosen-js/chosen.jquery.js";
 import { Modal, Tab, Tooltip } from "bootstrap";
 import { compile as squiffyCompile, CompileError } from "squiffy-compiler";
-import { openFile, saveFile, saveFileAs, setOnOpen, getRecentFiles, openRecentFile, clearCurrentFile, getCurrentFileHandle, getCurrentFileName, setCurrentFile } from "./file-handler";
+import { saveFile, saveFileAs, setOnOpen, getRecentFiles, openRecentFile, clearCurrentFile, getCurrentFileHandle, getCurrentFileName, setCurrentFile, selectFile } from "./file-handler";
 import { get, set, del } from "idb-keyval";
 import * as editor from "./editor";
 import { init as runtimeInit, SquiffyApi } from "squiffy-runtime";
@@ -16,7 +16,8 @@ import { getStoryFromCompilerOutput } from "./compiler-helper.ts";
 import * as userSettings from "./user-settings.ts";
 import initialScript from "./init.squiffy?raw";
 import { clearDebugger, logToDebugger } from "./debugger.ts";
-import { el, downloadString, downloadUint8Array } from "./util.ts";
+import { el, downloadString, downloadUint8Array, getVersionString } from "./util.ts";
+import { registerServiceWorker, onUpdateAvailable, applyUpdate } from "./sw-registration.ts";
 
 Object.assign(window, { $: $, jQuery: $ });
 
@@ -44,6 +45,7 @@ let squiffyApi: SquiffyApi | null;
 let welcomeModal: Modal | null = null;
 let unsavedChangesModal: Modal | null = null;
 let unsavedChangesCallback: ((confirm: boolean) => void) | null = null;
+let updateAvailable = false;
 
 function onClick(id: string, fn: () => void) {
     const element = el<HTMLElement>(id);
@@ -166,6 +168,15 @@ const showSettings = function () {
     new Modal("#settings-dialog").show();
 };
 
+const showAbout = function () {
+    el<HTMLElement>("about-version").textContent = getVersionString();
+    new Modal("#about-dialog").show();
+};
+
+const openExternalLink = function (url: string) {
+    window.open(url, "_blank", "noopener,noreferrer");
+};
+
 const showWelcome = async function (dismissable = false) {
     // Dispose of old modal if it exists
     if (welcomeModal) {
@@ -192,6 +203,10 @@ const showWelcome = async function (dismissable = false) {
     const errorDiv = el<HTMLElement>("welcome-error");
     errorDiv.style.display = "none";
     errorDiv.textContent = "";
+
+    // Show update available notification if applicable
+    const updateDiv = el<HTMLElement>("welcome-update-available");
+    updateDiv.style.display = updateAvailable ? "block" : "none";
 
     // Check for autosaved work (but not when dismissable, as that means we're
     // showing the welcome screen from the File menu and the autosave is the
@@ -294,17 +309,19 @@ const handleWelcomeCreateNew = async function () {
 
 const handleWelcomeOpenFile = async function () {
     clearWelcomeError();
+
+    // Select file first (within user gesture for iOS Safari compatibility)
+    const fileSelection = await selectFile();
+    if (!fileSelection) return; // User cancelled
+
+    // Now check for unsaved changes
     const confirm = await confirmDiscardUnsavedChanges();
     if (!confirm) return;
 
-    const success = await openFile();
-    if (success) {
-        // Clear autosave when opening a file from disk
-        await clearAutoSave();
-        // Only hide modal if file was successfully opened
-        welcomeModal?.hide();
-    }
-    // If not successful, modal stays visible (user cancelled)
+    // Load the selected file
+    await editorLoad(fileSelection.content);
+    await clearAutoSave();
+    welcomeModal?.hide();
 };
 
 let localSaveTimeout: NodeJS.Timeout | undefined;
@@ -569,6 +586,17 @@ const init = async function () {
     populateSettingsDialog();
     populateShortcutKeys();
 
+    // Register service worker and set up update detection
+    onUpdateAvailable(() => {
+        updateAvailable = true;
+        // If welcome dialog is currently showing, update it
+        const updateDiv = document.getElementById("welcome-update-available");
+        if (updateDiv) {
+            updateDiv.style.display = "block";
+        }
+    });
+    registerServiceWorker();
+
     editor.init(editorChange, cursorMoved);
     editor.setFontSize(userSettings.getFontSize());
     setOnOpen(editorLoad);
@@ -584,13 +612,17 @@ const init = async function () {
         }
     });
     onClick("open", async () => {
+        // Select file first (within user gesture for iOS Safari compatibility)
+        const fileSelection = await selectFile();
+        if (!fileSelection) return; // User cancelled
+
+        // Now check for unsaved changes
         const confirm = await confirmDiscardUnsavedChanges();
         if (!confirm) return;
 
-        const success = await openFile();
-        if (success) {
-            await clearAutoSave();
-        }
+        // Load the selected file
+        await editorLoad(fileSelection.content);
+        await clearAutoSave();
     });
     onClick("save", async () => {
         const success = await saveFile(editor.getValue());
@@ -616,6 +648,7 @@ const init = async function () {
     onClick("welcome-create-new", handleWelcomeCreateNew);
     onClick("welcome-open-file", handleWelcomeOpenFile);
     onClick("welcome-resume-autosave", handleWelcomeResumeAutoSave);
+    onClick("welcome-update-button", applyUpdate);
     onClick("add-section", addSection);
     onClick("add-passage", addPassage);
     onClick("collapse-all", editor.collapseAll);
@@ -629,6 +662,13 @@ const init = async function () {
     onClick("edit-select-all", editor.selectAll);
     onClick("edit-find", editor.find);
     onClick("edit-replace", editor.replace);
+
+    onClick("help-docs", () => openExternalLink("https://squiffystory.com"));
+    onClick("help-examples", () => openExternalLink("https://squiffystory.com/featured-examples/"));
+    onClick("help-report-issue", () => openExternalLink("https://github.com/textadventures/squiffy/issues"));
+    onClick("help-github", () => openExternalLink("https://github.com/textadventures/squiffy"));
+    onClick("help-discord", () => openExternalLink("https://textadventures.co.uk/community/discord"));
+    onClick("help-about", showAbout);
 
     onClick("unsaved-changes-confirm", () => {
         if (unsavedChangesCallback) {
