@@ -1,19 +1,26 @@
 # Squiffy Documentation Gaps Analysis
 
 **Generated:** 2026-01-12
+**Last Updated:** 2026-01-20
 
 This document identifies missing or incomplete documentation in the Squiffy project (v6 alpha).
 
 ## Executive Summary
 
 **Current State:**
-- 10 documentation files exist (2 root-level, 4 package READMEs, 4 user guide pages)
-- User-facing guides cover basic concepts, dynamic text, and CLI usage
+- 13 documentation files exist (2 root-level, 4 package READMEs, 7 user guide pages)
+- User-facing guides cover basic concepts, attributes/state management, dynamic text, helpers reference, CLI usage, and examples
 - CLAUDE.md provides internal developer guidance but is not public documentation
 
-**Major Gaps:**
+**Recent Improvements (Jan 2026):**
+- ✅ Added comprehensive attributes documentation (`attributes.mdx`)
+- ✅ Added complete helpers reference (`helpers-reference.mdx`)
+- ✅ Added examples page with interactive demos (`featured-examples.mdx`)
+- ✅ Added input validation documentation to basic concepts
+
+**Remaining Major Gaps:**
 - No API reference documentation for developers
-- Missing advanced user guides (state management, deployment, troubleshooting)
+- Missing advanced user guides (deployment, troubleshooting)
 - No plugin development documentation
 - Incomplete package-level documentation
 - No migration guide from v5 to v6
@@ -80,79 +87,96 @@ This document identifies missing or incomplete documentation in the Squiffy proj
 ## 2. User Guide Gaps
 
 ### 2.1 Complete Syntax Reference
-**Status:** Partial - scattered across basic-concepts.mdx
-**Impact:** High - Users cannot find complete reference
+**Status:** Partial - improved but still scattered
+**Impact:** High - Users cannot find complete reference in one place
 
-**Missing Content:**
+**Now Documented (across multiple pages):**
+- Attribute commands (@set, @inc, @dec, @unset) documented in `attributes.mdx`
+- Link syntax with attribute settings documented in `attributes.mdx`
+- All Handlebars helpers documented in `helpers-reference.mdx`
+
+**Still Missing:**
 - Complete link syntax reference (all variants in one place)
-- All metadata commands (@title, @start, @import, @ui, @set, @inc, @dec, @unset)
+- Non-attribute metadata commands (@title, @start, @import, @ui)
 - Screen control commands (@clear, ---, +++)
 - Computed expressions in links (`:=` operator)
 - Master sections/passages syntax and use cases
 - Turn-based passages (@1, @2, @last)
 
-**Recommended:** Create `syntax-reference.mdx` with comprehensive syntax table
+**Recommended:** Create `syntax-reference.mdx` consolidating all syntax in one comprehensive page
 
 ### 2.2 Handlebars Helper Reference
-**Status:** Partial - some helpers documented in basic-concepts.mdx
-**Impact:** Medium - Users miss powerful features
+**Status:** ✅ COMPLETED (Jan 2026)
+**Location:** `site/src/content/docs/helpers-reference.mdx`
 
-**Missing Content:**
-Complete documentation of all helpers:
-- Attribute helpers: `{{set}}`, `{{unset}}`, `{{inc}}`, `{{dec}}`, `{{get}}`
-- Conditional helpers: `{{#if}}`, `{{#else}}`, `{{#unless}}`
-- Logic helpers: `{{and}}`, `{{or}}`, `{{not}}`, `{{eq}}`, `{{ne}}`, `{{gt}}`, `{{lt}}`, `{{gte}}`, `{{lte}}`
-- State helpers: `{{seen}}`, `{{embed}}`
+**Now Documented:**
+- All attribute helpers: `{{set}}`, `{{unset}}`, `{{inc}}`, `{{dec}}`, `{{get}}`
+- All conditional helpers: `{{#if}}`, `{{#else}}`, `{{#unless}}`
+- All logic helpers: `{{and}}`, `{{or}}`, `{{not}}`, `{{eq}}`, `{{ne}}`, `{{gt}}`, `{{lt}}`, `{{gte}}`, `{{lte}}`
+- All state helpers: `{{seen}}`, `{{at}}`, `{{embed}}`
 - Link helpers: `{{section}}`, `{{passage}}`
 - Array helper: `{{array}}`
-- Parameters and return values for each
-
-**Recommended:** Create `helpers-reference.mdx`
+- Dynamic content helpers: `{{random}}`, `{{#animate}}`, `{{#label}}`, `{{replace}}`, `{{rotate}}`, `{{sequence}}`, `{{live}}`
+- Helper vs directive distinction explained
+- Parameters and examples for each helper
 
 ### 2.3 State Management Guide
-**Status:** Missing
-**Impact:** High - Users struggle with complex stories
+**Status:** ✅ MOSTLY COMPLETED (Jan 2026)
+**Location:** `site/src/content/docs/attributes.mdx`
 
-**Missing Content:**
-- Attribute lifecycle and scope
-- Built-in attributes: `_section`, `_turncount`, `_seen_sections`, `_output`
-- Persistence system (localStorage keys, enabling/disabling)
-- State best practices for large stories
-- Common patterns: inventories, stats, quest tracking, flags
+**Now Documented:**
+- Setting attributes (directives and helpers)
+- Reading attributes with `{{attribute}}` and `{{get}}`
+- Conditional attribute changes (helper vs directive distinction)
+- Comparing attributes with all comparison operators
+- Logic helpers for complex conditions
+- Tracking sections/passages with `{{seen}}` and `{{at}}`
+- Embedding text from other sections
+- Creating links with helpers
+- Using attributes in JavaScript
+- Interactive example (food menu) demonstrating state patterns
+
+**Still Missing (minor gaps):**
+- Built-in attributes documentation: `_section`, `_turncount`, `_seen_sections`, `_output`
+- Persistence system details (localStorage keys, enabling/disabling)
 - Debugging state issues
 
-**Recommended:** Create `state-management.mdx`
-
 ### 2.4 Plugin Usage Guide
-**Status:** Missing (plugins only mentioned)
-**Impact:** Medium - Users don't know plugins exist
+**Status:** ✅ PARTIALLY COMPLETED (Jan 2026)
+**Location:** Usage documented in `helpers-reference.mdx`; examples in `featured-examples.mdx`
 
-**Missing Content:**
-- What plugins are and how they work
-- Complete list of built-in plugins:
-  - ReplaceLabel (`{{#label}}`, `{{#replace}}`)
-  - Random (`{{random}}`)
-  - Rotate/Sequence (`{{rotate}}`, `{{sequence}}`)
-  - Live (`{{live}}`)
-  - Animate (`{{#animate}}`)
-- Usage examples for each plugin
-- When to use which plugin
+**Now Documented (via helpers reference):**
+- ReplaceLabel (`{{#label}}`, `{{replace}}`)
+- Random (`{{random}}`)
+- Rotate/Sequence (`{{rotate}}`, `{{sequence}}`)
+- Live (`{{live}}`)
+- Animate (`{{#animate}}`)
+- Usage examples for each
+
+**Still Missing:**
+- What plugins are and how they work (conceptual overview)
+- When to use which plugin (guidance)
 - How to find/install community plugins
+- Dedicated plugins.mdx page explaining the plugin system
 
-**Recommended:** Create `plugins.mdx` in user guide
+**Recommended:** Create `plugins.mdx` with conceptual overview and link to helpers reference for details
 
 ### 2.5 Animation Guide
-**Status:** Partial in dynamic-text.mdx
-**Impact:** Low-Medium
+**Status:** ✅ PARTIALLY COMPLETED (Jan 2026)
+**Location:** `helpers-reference.mdx` and `dynamic-text.mdx`
 
-**Missing Content:**
-- Complete animation options (start, interval, loop, trigger, fadeDuration)
-- Built-in animation types: typewriter, toast, fadeIn
+**Now Documented:**
+- Built-in animation types: typewriter, toast, fadeIn, continue
+- Basic animation syntax and usage
+- Animation parameters: trigger, style, loop
+
+**Still Missing:**
+- Complete animation options (start, interval, fadeDuration)
 - Animation timing and chaining
 - Performance considerations
-- Custom animation overview (links to dev guide)
+- Custom animation development (links to dev guide)
 
-**Recommended:** Expand `dynamic-text.mdx` animation section
+**Recommended:** Consider expanding `dynamic-text.mdx` for advanced animation topics
 
 ### 2.6 Deployment Guide
 **Status:** Missing
@@ -202,16 +226,18 @@ Complete documentation of all helpers:
 **Recommended:** Create `best-practices.mdx`
 
 ### 2.9 Examples Gallery
-**Status:** Missing (examples exist in `/examples/` but not documented)
-**Impact:** Medium - Users lack reference implementations
+**Status:** ✅ PARTIALLY COMPLETED (Jan 2026)
+**Location:** `site/src/content/docs/featured-examples.mdx`
 
-**Missing Content:**
-- Annotated example stories showing different features
-- Common patterns: inventory systems, combat, dialogue trees, timers
+**Now Documented:**
+- Coffee Shop Story example (demonstrates text input, variable tracking, conditional text, relationship tracking, multiple endings)
+- Game Show example (demonstrates animations, live updates, randomization, complex state tracking, nested conditionals, dynamic scoring)
+- Both examples are interactive with playable demos
+
+**Still Missing:**
+- Additional common patterns: inventory systems, combat, dialogue trees, timers
 - Integration examples (embedding Squiffy in apps)
 - Links to community stories
-
-**Recommended:** Create `examples.mdx` with links to example files
 
 ### 2.10 Migration Guide (v5 → v6)
 **Status:** Missing
@@ -428,20 +454,20 @@ Each package needs comprehensive README with:
 2. **Complete Syntax Reference** - Essential user reference
 3. **Deployment Guide** - Users can't publish stories
 4. **Troubleshooting Guide** - Reduces support burden
-5. **State Management Guide** - Critical for complex stories
+5. ~~**State Management Guide**~~ ✅ Completed (see `attributes.mdx`)
 6. **Migration Guide v5→v6** - Blocks v5 user upgrades
 
 ### High Priority
 7. Plugin Development Guide - Enables ecosystem
 8. Compiler API Reference - Enables tooling
 9. Contributing Guide - Enables open source contributions
-10. Handlebars Helper Reference - Unlocks advanced features
+10. ~~**Handlebars Helper Reference**~~ ✅ Completed (see `helpers-reference.mdx`)
 11. Package-Specific READMEs - Improves developer experience
 
 ### Medium Priority
 12. Plugin Usage Guide - Improves user capability
 13. Best Practices Guide - Improves story quality
-14. Examples Gallery - Learning resource
+14. ~~**Examples Gallery**~~ ✅ Partially completed (see `featured-examples.mdx`)
 15. Architecture Documentation - Contributor onboarding
 16. Accessibility Guide - Inclusivity
 17. CSS Customization Guide - Branding/themes
@@ -462,29 +488,29 @@ Each package needs comprehensive README with:
 
 ```
 /docs/
-├── index.mdx (Welcome - exists)
+├── index.mdx (Welcome - EXISTS)
 ├── getting-started/
 │   ├── installation.mdx
 │   ├── your-first-story.mdx
 │   └── deployment.mdx (NEW)
 ├── guides/
 │   ├── syntax-reference.mdx (NEW - consolidate all syntax)
-│   ├── basic-concepts.mdx (exists)
-│   ├── dynamic-text.mdx (exists)
-│   ├── state-management.mdx (NEW)
+│   ├── basic-concepts.mdx (EXISTS)
+│   ├── dynamic-text.mdx (EXISTS)
+│   ├── attributes.mdx (EXISTS ✅ - covers state management)
 │   ├── plugins.mdx (NEW)
 │   ├── styling.mdx (NEW)
 │   ├── accessibility.mdx (NEW)
 │   └── best-practices.mdx (NEW)
 ├── reference/
-│   ├── cli.mdx (exists)
-│   ├── helpers-reference.mdx (NEW)
+│   ├── cli.mdx (EXISTS)
+│   ├── helpers-reference.mdx (EXISTS ✅)
 │   ├── runtime-api.mdx (NEW)
 │   ├── compiler-api.mdx (NEW)
 │   ├── packager-api.mdx (NEW)
 │   └── plugin-api.mdx (NEW)
 ├── examples/
-│   └── index.mdx (NEW - links to /examples/ code)
+│   └── featured-examples.mdx (EXISTS ✅ - interactive examples)
 ├── advanced/
 │   ├── plugin-development.mdx (NEW)
 │   ├── custom-animations.mdx (NEW)
@@ -507,9 +533,15 @@ Each package should have:
 
 ## 8. Action Items Summary
 
-**To achieve comprehensive documentation:**
+**Progress Update (Jan 2026):**
+- ✅ Helpers reference page created
+- ✅ State management (attributes) page created
+- ✅ Examples page with interactive demos created
+- ✅ Input validation documented in basic concepts
 
-1. **Create 15 new user guide pages** (syntax-reference, state-management, plugins, deployment, troubleshooting, best-practices, helpers-reference, examples, migration, styling, accessibility, installation, your-first-story, custom-animations, architecture)
+**Remaining work to achieve comprehensive documentation:**
+
+1. **Create 12 new user guide pages** (syntax-reference, plugins, deployment, troubleshooting, best-practices, migration, styling, accessibility, installation, your-first-story, custom-animations, architecture)
 
 2. **Create 4 new API reference pages** (runtime-api, compiler-api, packager-api, plugin-api)
 
@@ -521,13 +553,12 @@ Each package should have:
 
 6. **Reorganize site structure** to match proposed organization
 
-**Estimated effort:** 40-60 hours of technical writing
+**Estimated effort:** 30-45 hours of technical writing (reduced from 40-60)
 
 **Quick wins (can be done in 1-2 hours each):**
 - Contributing guide
 - Browser compatibility matrix
 - Community/support page
-- Examples index with links to existing examples
 - Changelog from git history
 
 ---
@@ -553,12 +584,17 @@ Beyond missing content, existing documentation has these issues:
 
 ## Conclusion
 
-The Squiffy project has **strong foundational documentation** for basic usage but **critical gaps** in API references, advanced guides, and developer documentation. The v6 rewrite has introduced many powerful features (plugin system, modern runtime API, TypeScript) that are **completely undocumented** for public use.
+The Squiffy project has **strong foundational documentation** for basic usage and has made **significant progress** in January 2026 with comprehensive attributes/state management and helpers reference documentation. However, **critical gaps remain** in API references, deployment guides, and developer documentation. The v6 rewrite has introduced many powerful features (plugin system, modern runtime API, TypeScript) that are still **largely undocumented** for public use.
 
-**Immediate priorities** should focus on:
+**Recent Accomplishments:**
+- ✅ State management documentation (attributes.mdx)
+- ✅ Complete helpers reference (helpers-reference.mdx)
+- ✅ Interactive examples gallery (featured-examples.mdx)
+
+**Remaining priorities** should focus on:
 1. API documentation (enables developers)
 2. Complete syntax reference (essential for all users)
 3. Deployment guide (enables story publishing)
-4. State management (enables complex stories)
+4. Troubleshooting guide (reduces support burden)
 
-Addressing these gaps would transform Squiffy from a tool with good basic docs to one with **comprehensive, professional documentation** suitable for both casual creators and serious developers.
+Addressing these remaining gaps would transform Squiffy from a tool with good user guides to one with **comprehensive, professional documentation** suitable for both casual creators and serious developers.
